@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"k8s.io/klog"
+	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
@@ -41,8 +42,13 @@ type WorkerConfig struct {
 
 type WorkerChain []*WorkerConfig
 func (c WorkerChain) Invoke(parent context.Context, wait *sync.WaitGroup) {
-	for _, config := range c {
+	withJitter := func(parent context.Context, wait *sync.WaitGroup, config *WorkerConfig) {
+		<-time.After(utilwait.Jitter(time.Second, 5.0))
 		go run(parent, wait, config)
+	}
+
+	for _, config := range c {
+		go withJitter(parent, wait, config)
 	}
 }
 

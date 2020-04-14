@@ -9,6 +9,7 @@ rules:
       - namespaces
       - configmaps
       - pods
+      - events
     verbs:
       - get
       - list

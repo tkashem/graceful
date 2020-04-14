@@ -29,6 +29,7 @@ spec:
             privileged: true
           command:
             - /usr/bin/graceful-test
+            - -metrics-port=9090
             - -kubelet-kubeconfig=/var/lib/kubelet/kubeconfig
             - -kube-apiserver-pod-name=kube-apiserver-$(MY_NODE_NAME)
           ports:

@@ -3,34 +3,48 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"fmt"
+	"reflect"
+	"net/http"
+	"sync"
 	"io/ioutil"
+
 	"k8s.io/apiserver/pkg/server"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
-	"net/http"
-	"sync"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/tkashem/graceful/pkg/test"
 )
 
 var (
 	kubeConfigPath = flag.String("kubeconfig", "", "path to the kubeconfig file")
+	port = flag.Int("metrics-port", 9000, "metrics port")
 	kubeletkubeConfigPath = flag.String("kubelet-kubeconfig", "", "path to the kubeconfig file used by kubelet")
 	kubeAPIServerPodName = flag.String("kube-apiserver-pod-name", "", "kube-apiserver pod name on the node")
+	kubeAPIServerNamespace = flag.String("kube-apiserver-namespace", "openshift-kube-apiserver", "kube-apiserver namespace")
 )
 
 func main() {
+	// klog.InitFlags(nil)
 	flag.Parse()
 
 	klog.Infof("kubeConfigPath=%s", *kubeConfigPath)
 	klog.Infof("kubeletkubeConfigPath=%s", *kubeletkubeConfigPath)
 	klog.Infof("kubeAPIServerPodName=%s", *kubeAPIServerPodName)
+	klog.Infof("kubeAPIServerNamespace=%s", *kubeAPIServerNamespace)
 
-	config, err := useAPIURLUsedByKuelet(*kubeConfigPath, *kubeletkubeConfigPath)
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeConfigPath)
 	if err != nil {
+		return
+	}
+	config.QPS = 1000
+	config.Burst = 2000
+	if err = setHostForConfig(config, *kubeletkubeConfigPath); err != nil {
 		panic(err)
 	}
 
@@ -41,10 +55,7 @@ func main() {
 		panic(err)
 	}
 
-	initializer, monitor, err := test.NewKubeAPIServerMonitor(client, *kubeAPIServerPodName)
-	if err != nil {
-		panic(err)
-	}
+	initializer, kubeAPIServerEventHandler := test.NewKubeAPIServerEventHandler(*kubeAPIServerPodName)
 
 	// initialize
 	initializers := test.InitializerChain{
@@ -55,6 +66,8 @@ func main() {
 		panic(err)
 	}
 
+
+
 	shutdown, cancel := context.WithCancel(context.TODO())
 	shutdownHandler := server.SetupSignalHandler()
 	go func() {
@@ -64,20 +77,26 @@ func main() {
 		klog.Info("Received SIGTERM or SIGINT signal, initiating shutdown.")
 	}()
 
+	klog.Infof("[EventWatcher] preparing event watcher - namespace=%s", *kubeAPIServerNamespace)
+	factory := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithNamespace(*kubeAPIServerNamespace))
+	test.NewEventWatcher(factory, kubeAPIServerEventHandler)
+	if err = startInformers(shutdown, factory); err != nil {
+		panic(err)
+	}
+
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
-		err := http.ListenAndServe(":9090", metricsMux)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", *port), metricsMux)
 		if err != nil {
 			klog.Errorf("Metrics (http) serving failed: %v", err)
 		}
 	}()
 
 	workers := test.WorkerChain{
-		monitor,
 		test.SlowCall(client),
 	}
-	workers = append(workers, test.FastCalls(client, 6)...)
+	workers = append(workers, test.FastCalls(client, 50)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}
@@ -90,22 +109,43 @@ func main() {
 	klog.Info("all worker(s) are done")
 }
 
-func useAPIURLUsedByKuelet(kubeConfigPath, kubeletkubeConfigPath string) (config *rest.Config, err error) {
-	bytes, err := ioutil.ReadFile(kubeletkubeConfigPath)
+func setHostForConfig(config *rest.Config, kubeConfigPath string) error {
+	if len(kubeConfigPath) == 0 {
+		return nil
+	}
+
+	bytes, err := ioutil.ReadFile(kubeConfigPath)
 	if err != nil {
-		return
+		return err
 	}
 
 	kubelet, err := clientcmd.RESTConfigFromKubeConfig(bytes)
 	if err != nil {
-		return
-	}
-
-	config, err = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
-	if err != nil {
-		return
+		return err
 	}
 
 	config.Host = kubelet.Host
-	return
+	return nil
+}
+
+func startInformers(shutdown context.Context, factory informers.SharedInformerFactory) error {
+	factory.Start(shutdown.Done())
+	status := factory.WaitForCacheSync(shutdown.Done())
+	if names := check(status); len(names) > 0 {
+		return fmt.Errorf("WaitForCacheSync did not successfully complete resources=%s", names)
+	}
+
+	return nil
+}
+
+func check(status map[reflect.Type]bool) []string {
+	names := make([]string, 0)
+
+	for objType, synced := range status {
+		if !synced {
+			names = append(names, objType.Name())
+		}
+	}
+
+	return names
 }
