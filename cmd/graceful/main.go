@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 
 	"k8s.io/apiserver/pkg/server"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -66,8 +68,6 @@ func main() {
 		panic(err)
 	}
 
-
-
 	shutdown, cancel := context.WithCancel(context.TODO())
 	shutdownHandler := server.SetupSignalHandler()
 	go func() {
@@ -84,6 +84,20 @@ func main() {
 		panic(err)
 	}
 
+	// setup a namespace
+	ns, err := client.CoreV1().Namespaces().Create( &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "graceful-test",
+			Labels: map[string]string{
+				"graceful-test": "true",
+			},
+		},
+	} )
+	if err != nil {
+		panic(err)
+	}
+	klog.Infof("setup test namespace - namespace=%s", ns.GetName())
+
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
@@ -96,7 +110,7 @@ func main() {
 	workers := test.WorkerChain{
 		test.SlowCall(client),
 	}
-	workers = append(workers, test.FastCalls(client, 50)...)
+	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), 20)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}
@@ -107,6 +121,8 @@ func main() {
 	klog.Info("waiting for worker to be done")
 	wg.Wait()
 	klog.Info("all worker(s) are done")
+
+	klog.Info("cleaning up")
 }
 
 func setHostForConfig(config *rest.Config, kubeConfigPath string) error {

@@ -34,10 +34,16 @@ func (w Worker) Work() {
 	w()
 }
 
+type Disposer func() error
+func (d Disposer) Dispose() error {
+	return d()
+}
+
 type WorkerConfig struct {
 	Name string
 	WaitInterval time.Duration
 	Worker Worker
+	Disposer Disposer
 }
 
 type WorkerChain []*WorkerConfig
