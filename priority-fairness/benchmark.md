@@ -47,14 +47,17 @@ concurrently take turn.
 **Step 6**: Delete the `ConfigMap` and `Secret` objects (each `100K`). Two go-routines concurrently take turn.
 
 ## Comparison:
-The table below puts some measurements side by side for comparison.  
+The table below puts some measurements side by side for comparison. 
+* Each graph here scales to an exact `16` minute window on the X axis.
+* The CPU Usage, Load average and System Memory metrics are of the master node that received the traffic from the load generator.
 
 Measurement | Baseline | Priority&Fairness Enabled
 --- | --- | ---
+*Test Duration* | Approximately 13 minutes | Approximately 15 minutes
 *Load Average* | ![load-average](baseline/baseline-load-average.png)  | ![load-average](pf-enabled/pf-enabled-load-average.png)
 *CPU Usage* | ![load-average](baseline/baseline-cpu-usage.png)  | ![load-average](pf-enabled/pf-enabled-cpu-usage.png)
 *System Memory* | ![load-average](baseline/baseline-system-memory.png)  | ![load-average](pf-enabled/pf-enabled-system-memory.png)
-*Request Duration* | ![load-average](baseline/baseline-request-duration.png)  | ![load-average](pf-enabled/pf-enabled-request-duration.png)
+*Request Duration* | ![load-average](baseline/baseline-request-duration.png) ![load-average](baseline/baseline-request-duration-q50.png) | ![load-average](pf-enabled/pf-enabled-request-duration.png) ![load-average](pf-enabled/pf-enabled-request-duration-q50.png)
 *Request Rate* | ![load-average](baseline/baseline-request-rate-by-instance.png)  | ![load-average](pf-enabled/pf-enabled-request-rate-by-instance.png)
 *Request In-Flight* | ![load-average](baseline/baseline-request-in-flight.png)  | ![load-average](pf-enabled/pf-enabled-request-in-flight.png)
 *Request Rejected* | ![load-average](baseline/baseline-request-termination-rate.png)  | ![load-average](pf-enabled/pf-enabled-request-termination-rate.png)
@@ -64,11 +67,22 @@ In both cases, the test run is successful:
 * all objects are created and deleted afterwards successfully.
 
 **Summary**:
-* The results are fairly comparable with one major difference.
 * With `Priority&Fairnes` enabled we see quite a few requests are rejected with `Retry-After 1s` error. The 
   `Retry` error is thrown from the `Priority&Fairnes` handler with a reason of `concurrency-limit`.
+* The CPU usage with `Priority&Fairnes` enabled is a little lower.
+* Number of requests in-flight with `Priority&Fairnes` enabled is lower than that of the baseline.
+* The test with `Priority&Fairnes` enabled runs about two minutes longer than the baseline test.
+* response time (99th quantile) is slightly better with `Priority&Fairnes` enabled. 
+
+From the above we can infer that `Priority&Fairnes` is throttling on the load by rejecting requests from the load 
+generator with `Retry` error. This explains why the test runs a little longer with `Priority&Fairnes`.
+  
   
 **Next Steps**:
+* Find a way to remove `kube-apiserver` instances from both the external and the internal load balancers. 
+  This way we can ensure that all of control plane traffic and traffic from the load generator end up in a single 
+  apiserver instance. This will ensure a more consistent test run.
+* Measure pod scheduling time and how long it takes a pod to be in `Running` state.    
 * Find out whether the `Retry-After 1s` errors thrown by `Priority&Fairnes` are expected. If not can we tune it to 
   eliminate these errors?
 * Even though the CPU usage on the master node gets close to `100%`, the maximum number of requests in flight were 
