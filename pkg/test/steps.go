@@ -88,16 +88,29 @@ func DefaultSteps(namespace string, client kubernetes.Interface) error {
 		return err
 	}
 
+
 	if sa != nil {
 		if err := client.CoreV1().ServiceAccounts(namespace).Delete(sa.GetName(), &metav1.DeleteOptions{}); err != nil {
 			return err
 		}
 	}
 
+	if _, err := client.CoreV1().Secrets(namespace).Get(secret.GetName(), metav1.GetOptions{}); err != nil {
+		return err
+	}
+
+	if _, err := client.CoreV1().ConfigMaps(namespace).Get(cm.GetName(), metav1.GetOptions{}); err != nil {
+		return err
+	}
+
 	if secret != nil {
 		if err := client.CoreV1().Secrets(namespace).Delete(secret.GetName(), &metav1.DeleteOptions{}); err != nil {
 			return err
 		}
+	}
+
+	if _, err := client.CoreV1().ConfigMaps(namespace).Get(cm.GetName(), metav1.GetOptions{}); err != nil {
+		return err
 	}
 
 	if cm != nil {

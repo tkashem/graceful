@@ -29,6 +29,7 @@ var (
 	kubeletkubeConfigPath = flag.String("kubelet-kubeconfig", "", "path to the kubeconfig file used by kubelet")
 	kubeAPIServerPodName = flag.String("kube-apiserver-pod-name", "", "kube-apiserver pod name on the node")
 	kubeAPIServerNamespace = flag.String("kube-apiserver-namespace", "openshift-kube-apiserver", "kube-apiserver namespace")
+	concurrency = flag.Int("concurrent", 1, "number of concurrent workers")
 )
 
 func main() {
@@ -57,17 +58,6 @@ func main() {
 		panic(err)
 	}
 
-	initializer, kubeAPIServerEventHandler := test.NewKubeAPIServerEventHandler(*kubeAPIServerPodName)
-
-	// initialize
-	initializers := test.InitializerChain{
-		test.ClientGoMetricsInitialize,
-		initializer,
-	}
-	if err := initializers.Invoke(); err != nil {
-		panic(err)
-	}
-
 	shutdown, cancel := context.WithCancel(context.TODO())
 	shutdownHandler := server.SetupSignalHandler()
 	go func() {
@@ -79,7 +69,23 @@ func main() {
 
 	klog.Infof("[EventWatcher] preparing event watcher - namespace=%s", *kubeAPIServerNamespace)
 	factory := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithNamespace(*kubeAPIServerNamespace))
-	test.NewEventWatcher(factory, kubeAPIServerEventHandler)
+
+	// initialize
+	initializers := test.InitializerChain{
+		test.ClientGoMetricsInitialize,
+	}
+
+	if len(*kubeAPIServerPodName) > 0 {
+		initializer, kubeAPIServerEventHandler := test.NewKubeAPIServerEventHandler(*kubeAPIServerPodName)
+		initializers = append(initializers, initializer)
+
+		test.NewEventWatcher(factory, kubeAPIServerEventHandler)
+	}
+
+	if err := initializers.Invoke(); err != nil {
+		panic(err)
+	}
+
 	if err = startInformers(shutdown, factory); err != nil {
 		panic(err)
 	}
@@ -110,7 +116,7 @@ func main() {
 	workers := test.WorkerChain{
 		test.SlowCall(client),
 	}
-	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), 20)...)
+	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), *concurrency)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}
