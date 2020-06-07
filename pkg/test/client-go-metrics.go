@@ -43,7 +43,10 @@ func ClientGoMetricsInitialize() error {
 		return err
 	}
 
-	metrics.Register(LatencyMetricFunc(Observe), ResultMetricFunc(Increment))
+	metrics.Register(metrics.RegisterOpts{
+		RequestLatency: LatencyMetricFunc(Observe),
+		RequestResult: ResultMetricFunc(Increment),
+	})
 	return nil
 }
 

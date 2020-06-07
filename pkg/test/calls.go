@@ -3,6 +3,7 @@ package test
 import (
 	"fmt"
 	"time"
+	"context"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -12,7 +13,7 @@ import (
 
 func FastCalls(client kubernetes.Interface, count int) []*WorkerConfig {
 	worker := func() {
-		_, err := client.CoreV1().ConfigMaps("openshift-kube-apiserver").Get("config", metav1.GetOptions{})
+		_, err := client.CoreV1().ConfigMaps("openshift-kube-apiserver").Get(context.TODO(), "config", metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("call error=%s", err.Error())
 		}
@@ -35,7 +36,7 @@ func SlowCall(client kubernetes.Interface) *WorkerConfig {
 		Name: "get-configmaps-all-namespaces",
 		WaitInterval: 1 * time.Minute,
 		Worker: func() {
-			_, err := client.CoreV1().ConfigMaps(corev1.NamespaceAll).List(metav1.ListOptions{})
+			_, err := client.CoreV1().ConfigMaps(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				klog.Errorf("getAllConfigMaps error=%s", err.Error())
 			}

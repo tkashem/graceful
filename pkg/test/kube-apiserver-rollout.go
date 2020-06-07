@@ -2,6 +2,7 @@ package test
 
 import (
 	"time"
+	"context"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -87,7 +88,7 @@ func NewKubeAPIServerEventHandler(podName string) (initializer Initializer, hand
 
 func status(client kubernetes.Interface, name string) {
 	namespace := "openshift-kube-apiserver"
-	pod, err := client.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
+	pod, err := client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("name=%s/%s failed to get kube-apiserver pod - %s", namespace, name, err.Error())
 

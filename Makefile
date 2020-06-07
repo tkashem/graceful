@@ -1,13 +1,20 @@
 MOD_FLAGS := $(shell (go version | grep -q -E "1\.1[1-9]") && echo -mod=vendor)
-CMD_PACKAGE := $(shell go list $(MOD_FLAGS) ./cmd/...)
+CMDS := $(shell go list $(MOD_FLAGS) ./cmd/...)
 OUTPUT_DIR := "_output/bin"
-BINARY := "$(OUTPUT_DIR)/graceful-test"
 
 IMAGE ?= "docker.io/tohinkashem/graceful:latest"
 
-build:
+$(CMDS):
+	go build $(MOD_FLAGS) -o $(OUTPUT_DIR)/$(shell basename $@) $@
+
+build: clean $(CMDS)
+
+clean:
+	rm -rf ./_output/bin
 	mkdir -p ./_output/bin
-	go build $(MOD_FLAGS) -o $(BINARY) $(CMD_PACKAGE)
+
+
+#	go build $(MOD_FLAGS) -o $(BINARY) $(CMD_PACKAGE)
 
 image:
 	docker build -t $(IMAGE) -f Dockerfile .
