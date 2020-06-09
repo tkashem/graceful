@@ -32,7 +32,7 @@ spec:
             - -metrics-port=9090
             - -kubelet-kubeconfig=/var/lib/kubelet/kubeconfig
             - -kube-apiserver-pod-name=kube-apiserver-$(MY_NODE_NAME)
-            - -concurrent=20
+            - -concurrent=10
           ports:
             - name: metrics
               containerPort: 9090
