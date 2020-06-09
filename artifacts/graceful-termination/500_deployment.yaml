@@ -30,9 +30,10 @@ spec:
           command:
             - /usr/bin/graceful-termination
             - -metrics-port=9090
+            - -v=4
             - -kubelet-kubeconfig=/var/lib/kubelet/kubeconfig
             - -kube-apiserver-pod-name=kube-apiserver-$(MY_NODE_NAME)
-            - -concurrent=10
+            - -concurrent=25
           ports:
             - name: metrics
               containerPort: 9090

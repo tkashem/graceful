@@ -119,10 +119,12 @@ func main() {
 		}
 	}()
 
+
 	workers := test.WorkerChain{
 		test.SlowCall(client),
 	}
-	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), *concurrency)...)
+	workers = append(workers, test.DefaultReadonlyWorker(client, ns.GetName(), *concurrency)...)
+	// workers = append(workers, test.WithNewConnectionWorker(config, ns.GetName(), *concurrency)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}
