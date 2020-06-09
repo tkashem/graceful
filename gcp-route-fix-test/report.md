@@ -69,43 +69,41 @@ spec:
         hostPath:
           path: /var/lib/kubelet
 ```
-* The test will run on each master node and will concurrently (10 go routines) issue request(s) to the API server. 
-    * When `kube-apiserver` restarts on a particular node, `/readyz` will not report `200` and the internal load balancer
-      should not forward any traffic to it until the new process starts reporting `200` on `readyz` again. In essence, 
-      we should not see any new or exisitng connections being dropped by this API server.
+* The test will run on each master node and will concurrently issue request(s) to the API server. 
 * While the test is running, we will force a `kube-apiserver` roll out.
 
 ## Test Runs (Test with Delete, Post, Get)
-### GCP 4.5 
-![error on a master node](gcp-4.5-with-route-fix.png)
-
+### 4.5 on GCP 
 The errors we see:
 * `unexpected EOF`
 * `http2: server sent GOAWAY and closed the connection; LastStreamID=3602153, ErrCode=NO_ERROR, debug=""`
 
+The `server sent GOAWAY and closed the connection` errors happened on the `Delete` and `Post` calls. This is expected 
+since `client-go` does retries on `Get` only.  
+
+![error on a master node](gcp-4.5-with-route-fix.png)
+
+
 #### Broken Pipe Error
+Is the following error `write tcp 10.0.0.6:52950->10.0.0.2:6443: write: broken pipe` related to the gcp route. `10.0.0.6` 
+is a `master` node  and `10.0.0.2` is the internal gcp load balancer address.
+
 ```
-I0608 21:41:20.732640       1 kube-apiserver-rollout.go:71] kube-apiserver roll out event: event=Started pod=kube-apiserver-tkashem-ctllb-master-1.c.openshift-gce-devel.internal
-E0608 21:45:21.938909       1 steps.go:17] step error=Delete https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testxgt57/serviceaccounts/test-5wb8h: write tcp 10.0.0.6:52950->10.0.0.2:6443: write: broken pipe
 E0608 21:45:21.939157       1 steps.go:17] step error=Post https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testxgt57/secrets: write tcp 10.0.0.6:52950->10.0.0.2:6443: write: broken pipe
-E0608 21:45:22.114469       1 steps.go:17] step error=Delete https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testxgt57/serviceaccounts/test-wcs55: http2: server sent GOAWAY and closed the connection; LastStreamID=188667, ErrCode=NO_ERROR, debug=""
-E0608 21:45:22.131398       1 steps.go:17] step error=Post https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testxgt57/secrets: http2: server sent GOAWAY and closed the connection; LastStreamID=188667, ErrCode=NO_ERROR, debug=""
 ```
 
-The following error `write tcp 10.0.0.6:52950->10.0.0.2:6443: write: broken pipe` may be related to the gcp route. `10.0.0.6` 
-is the `master-1` node  and `10.0.0.2` is the internal load balancer address.
 
+### 4.5 on AWS
+* we see the following error: `read tcp 10.0.160.64:36290->10.0.185.197:6443: read: connection reset by peer`
 
-### AWS 4.5
 ![error on a master node](aws-4.5.png)
-Error:
-* `read tcp 10.0.160.64:36290->10.0.185.197:6443: read: connection reset by peer`
 
-### GCP 4.4.7 
-* we saw `connection reset by peer` error. This error occurred on each master node while kube-apiserver was rolling out
-* The calls that failed are `delete` and `create`.   
 
-**master-0 Node:**
+### 4.4.7 on GCP 
+* we saw `connection reset by peer` error. This error occurred while kube-apiserver was rolling out.
+* The calls that failed are `Delete` and `Post`.   
+
+**master-0:**
 
 *Test Log:*
 ```
@@ -126,7 +124,8 @@ I0609 13:28:51.035238       1 kube-apiserver-rollout.go:71] kube-apiserver roll 
 
 ![gcp-4.4.7-master-0](gcp-4.4.7-master-0-node.png)
 
-#### master-1 Node:
+**master-1:**
+
 *Test Log:*
 ```
 E0609 13:31:02.580874       1 steps.go:17] step error=Delete https://api-int.ci-ln-x2y9dyk-f76d1.origin-ci-int-gce.dev.openshift.com:6443/api/v1/namespaces/graceful-test8k45q/serviceaccounts/test-s8d99: read tcp 10.0.0.2:58314->10.0.0.2:6443: read: connection reset by peer
@@ -144,7 +143,8 @@ I0609 13:31:02.851438       1 kube-apiserver-rollout.go:71] kube-apiserver roll 
 
 ![gcp-4.4.7-master-1](gcp-4.4.7-master-1-node.png)
 
-#### master-2 Node:
+**master-2:**
+
 *Test Log:*
 ```
 I0609 13:24:18.763652       1 kube-apiserver-rollout.go:71] kube-apiserver roll out event: event=BackOff pod=kube-apiserver-ci-ln-x2y9dyk-f76d1-rg58w-master-2
@@ -161,8 +161,9 @@ I0609 13:26:01.712843       1 kube-apiserver-rollout.go:71] kube-apiserver roll 
 
 
 ## Test (GET Only)
+The test uses only `Get` call to eliminate `client-go` not retrying `Delete` or `Post`. 
 
-### GCP 4.4.7
+### 4.4.7 on GCP
 ```
 E0609 21:03:39.162204       1 readonly-worker.go:16] step error=Get https://api-int.ci-ln-2k3dg0b-f76d1.origin-ci-int-gce.dev.openshift.com:6443/api/v1/namespaces/graceful-testx5g6z: unexpected EOF
 E0609 21:03:39.162305       1 calls.go:41] getAllConfigMaps error=Get https://api-int.ci-ln-2k3dg0b-f76d1.origin-ci-int-gce.dev.openshift.com:6443/api/v1/configmaps: unexpected EOF
@@ -171,9 +172,9 @@ E0609 21:03:39.162305       1 calls.go:41] getAllConfigMaps error=Get https://ap
 ![gcp-4.4.7-read-only-test](gcp-4.4.7-read-only-test.png)
 
 
-### GCP 4.5 
+### 4.5 on GCP
 
-#### master-1 node
+**master-1:**
 ```
 E0609 21:34:21.045789       1 readonly-worker.go:16] step error=Get https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testtvbsq: write tcp 10.0.0.6:51234->10.0.0.2:6443: write: broken pipe
 E0609 21:34:21.050687       1 readonly-worker.go:16] step error=Get https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testtvbsq: write tcp 10.0.0.6:51234->10.0.0.2:6443: write: broken pipe
@@ -183,7 +184,7 @@ E0609 21:34:21.053188       1 readonly-worker.go:16] step error=Get https://api-
 
 ![gcp-4.5-read-only-test](gcp-4.5-read-only-test.png)
 
-#### master-0 node
+**master-0:**
 ```
 E0609 21:34:21.036881       1 readonly-worker.go:16] step error=Get https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testbclh6: unexpected EOF
 E0609 21:34:21.036898       1 readonly-worker.go:16] step error=Get https://api-int.tkashem.gcp.devcluster.openshift.com:6443/api/v1/namespaces/graceful-testbclh6: unexpected EOF
