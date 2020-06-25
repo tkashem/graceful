@@ -13,7 +13,7 @@ import (
 
 func DefaultReadonlyWorker(client kubernetes.Interface, namespace string, count int) []*WorkerConfig {
 	worker := func() {
-		if err := DefaultGetNamespace(namespace, client); err != nil {
+		if err := DefaultGetNamespace(client, namespace); err != nil {
 			klog.Errorf("step error=%s", err.Error())
 		}
 	}
@@ -22,7 +22,7 @@ func DefaultReadonlyWorker(client kubernetes.Interface, namespace string, count 
 	for i := 1; i <=count; i++ {
 		configs = append(configs, &WorkerConfig{
 			Name:         fmt.Sprintf("default-steps-%d", i),
-			WaitInterval: 1 * time.Millisecond,
+			WaitInterval: 500 * time.Millisecond,
 			Worker:       worker,
 		})
 	}
@@ -30,10 +30,10 @@ func DefaultReadonlyWorker(client kubernetes.Interface, namespace string, count 
 	return configs
 }
 
-func WithNewConnectionWorker(config *rest.Config, namespace string, count int) []*WorkerConfig {
-	worker := func(name string) Worker {
+func WithNewConnectionForEachWorker(config *rest.Config, namespace string, count int) []*WorkerConfig {
+	workerFunc := func(client kubernetes.Interface) Worker {
 		return func() {
-			if err := WithNewConnection(config, name, namespace); err != nil {
+			if err := DefaultGetNamespace(client, namespace); err != nil {
 				klog.Errorf("step error=%s", err.Error())
 			}
 		}
@@ -41,10 +41,16 @@ func WithNewConnectionWorker(config *rest.Config, namespace string, count int) [
 
 	configs := make([]*WorkerConfig, 0)
 	for i := 1; i <=count; i++ {
+		name := fmt.Sprintf("default-steps-%d", i)
+		client, err := WithNewUserAgent(config, name)
+		if err != nil {
+			panic(err)
+		}
+
 		configs = append(configs, &WorkerConfig{
-			Name:         fmt.Sprintf("default-steps-%d", i),
+			Name:         name,
 			WaitInterval: 1 * time.Millisecond,
-			Worker:       worker(fmt.Sprintf("default-steps-%d", i)),
+			Worker:       workerFunc(client),
 		})
 	}
 
@@ -52,7 +58,7 @@ func WithNewConnectionWorker(config *rest.Config, namespace string, count int) [
 }
 
 
-func DefaultGetNamespace(namespace string, client kubernetes.Interface) error {
+func DefaultGetNamespace(client kubernetes.Interface, namespace string) error {
 	_, err := client.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -61,14 +67,11 @@ func DefaultGetNamespace(namespace string, client kubernetes.Interface) error {
 	return nil
 }
 
-func WithNewConnection(config *rest.Config, userAgent, namespace string) error {
+
+func WithNewUserAgent(config *rest.Config, userAgent string) (client kubernetes.Interface, err error) {
 	copy := rest.CopyConfig(config)
 	copy = rest.AddUserAgent(copy, userAgent)
 
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return err
-	}
-
-	return DefaultGetNamespace(namespace, client)
+	client, err = kubernetes.NewForConfig(copy)
+	return
 }

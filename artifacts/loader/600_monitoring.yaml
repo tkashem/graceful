@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshift-loader
+  namespace: openshift-loader
+  labels:
+    openshift-loader: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 9090
+    protocol: TCP
+    targetPort: 9090
+  selector:
+    openshift-loader: "true"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openshift-loader-metrics
+  namespace: openshift-loader
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshift-loader-metrics
+  namespace: openshift-loader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openshift-loader-metrics
+subjects:
+- kind: ServiceAccount
+  name: prometheus-k8s
+  namespace: openshift-monitoring
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: openshift-loader-metrics
+  namespace: openshift-loader
+  labels:
+    openshift-loader: "true"
+spec:
+  endpoints:
+  - interval: 5s
+    port: metrics
+  namespaceSelector:
+    matchNames:
+    - openshift-loader
+  selector:
+    matchLabels:
+      openshift-loader: "true"

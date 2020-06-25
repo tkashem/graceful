@@ -854,12 +854,16 @@ func (r *Request) request(ctx context.Context, fn func(*http.Request, *http.Resp
 		}
 		resp, err := client.Do(req)
 		updateURLMetrics(r, resp, err)
+
 		if err != nil {
 			r.backoff.UpdateBackoff(r.URL(), err, 0)
 		} else {
 			r.backoff.UpdateBackoff(r.URL(), err, resp.StatusCode)
 		}
 		if err != nil {
+
+			klog.V(4).Infof("client-go error %s", err.Error())
+
 			// "Connection reset by peer" or "apiserver is shutting down" are usually a transient errors.
 			// Thus in case of "GET" operations, we simply retry it.
 			// We are not automatically retrying "write" operations, as

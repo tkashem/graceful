@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: openshift-loader
+  name: openshift-loader
+  labels:
+    openshift-loader: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      openshift-loader: "true"
+  template:
+    metadata:
+      name: openshift-loader
+      labels:
+        openshift-loader: "true"
+    spec:
+      serviceAccountName: openshift-loader
+      containers:
+        - name: openshift-loader
+          image: docker.io/tohinkashem/graceful:latest
+          imagePullPolicy: Always
+          command:
+            - /usr/bin/loader
+            - -metrics-port=9090
+            - -v=4
+            - -concurrent=25
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName

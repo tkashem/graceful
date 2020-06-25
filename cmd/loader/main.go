@@ -37,16 +37,12 @@ func main() {
 	flag.Parse()
 
 	klog.Infof("kubeConfigPath=%s", *kubeConfigPath)
-	klog.Infof("kubeletkubeConfigPath=%s", *kubeletkubeConfigPath)
-	klog.Infof("kubeAPIServerPodName=%s", *kubeAPIServerPodName)
-	klog.Infof("kubeAPIServerNamespace=%s", *kubeAPIServerNamespace)
-
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeConfigPath)
 	if err != nil {
 		return
 	}
-	config.QPS = 1000
-	config.Burst = 2000
+	config.QPS = 10000
+	config.Burst = 20000
 	if err = setHostForConfig(config, *kubeletkubeConfigPath); err != nil {
 		panic(err)
 	}
@@ -67,35 +63,12 @@ func main() {
 		klog.Info("Received SIGTERM or SIGINT signal, initiating shutdown.")
 	}()
 
-	klog.Infof("[EventWatcher] preparing event watcher - namespace=%s", *kubeAPIServerNamespace)
-	factory := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithNamespace(*kubeAPIServerNamespace))
-
-	// initialize
-	initializers := test.InitializerChain{
-		test.ClientGoMetricsInitialize,
-	}
-
-	if len(*kubeAPIServerPodName) > 0 {
-		initializer, kubeAPIServerEventHandler := test.NewKubeAPIServerEventHandler(*kubeAPIServerPodName)
-		initializers = append(initializers, initializer)
-
-		test.NewEventWatcher(factory, kubeAPIServerEventHandler)
-	}
-
-	if err := initializers.Invoke(); err != nil {
-		panic(err)
-	}
-
-	if err = startInformers(shutdown, factory); err != nil {
-		panic(err)
-	}
-
 	// setup a namespace
 	ns, err := client.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: "graceful-test",
+			GenerateName: "load-test",
 			Labels: map[string]string{
-				"graceful-test": "true",
+				"load-test": "true",
 			},
 		},
 	}, metav1.CreateOptions{} )
@@ -117,7 +90,6 @@ func main() {
 		test.SlowCall(client),
 	}
 	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), *concurrency)...)
-	// workers = append(workers, test.HealthCheckWorker(client, 10)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}

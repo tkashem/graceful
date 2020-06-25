@@ -15,3 +15,5 @@ require (
 	k8s.io/component-base v0.18.3
 	k8s.io/klog v1.0.0
 )
+
+replace k8s.io/client-go => github.com/tkashem/client-go v0.18.4-0.20200610171029-4c890384404f

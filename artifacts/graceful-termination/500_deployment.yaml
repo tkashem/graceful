@@ -1,11 +1,12 @@
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   namespace: openshift-graceful
   name: graceful-test
   labels:
     graceful-test: "true"
 spec:
+  replicas: 1
   selector:
     matchLabels:
       graceful-test: "true"
@@ -42,6 +43,8 @@ spec:
           - mountPath: /var/lib/kubelet
             name: kubeconfig
           env:
+          # - name: GODEBUG
+          #   value: http2debug=2
           - name: MY_NODE_NAME
             valueFrom:
               fieldRef:

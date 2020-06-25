@@ -50,8 +50,8 @@ func main() {
 	if err != nil {
 		return
 	}
-	config.QPS = 1000
-	config.Burst = 2000
+	config.QPS = 3000
+	config.Burst = 6000
 	if err = setHostForConfig(config, *kubeletkubeConfigPath); err != nil {
 		panic(err)
 	}
@@ -123,8 +123,9 @@ func main() {
 	workers := test.WorkerChain{
 		test.SlowCall(client),
 	}
+	// workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), *concurrency)...)
 	workers = append(workers, test.DefaultReadonlyWorker(client, ns.GetName(), *concurrency)...)
-	// workers = append(workers, test.WithNewConnectionWorker(config, ns.GetName(), *concurrency)...)
+	workers = append(workers, test.WithNewConnectionForEachWorker(config, ns.GetName(), 1)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}
