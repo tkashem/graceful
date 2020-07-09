@@ -74,3 +74,35 @@ func run(parent context.Context, wg *sync.WaitGroup, config *WorkerConfig) {
 		}
 	}
 }
+
+
+func (c WorkerChain) Invoke2(parent context.Context, wait *sync.WaitGroup) {
+	withJitter := func(parent context.Context, wait *sync.WaitGroup, config *WorkerConfig) {
+		<-time.After(utilwait.Jitter(time.Second, 5.0))
+		go runParallel(parent, wait, config)
+	}
+
+	for _, config := range c {
+		go withJitter(parent, wait, config)
+	}
+}
+
+func runParallel(parent context.Context, wg *sync.WaitGroup, config *WorkerConfig) {
+	wg.Add(1)
+	defer wg.Done()
+
+	klog.Infof("loop=%s - starting worker loop", config.Name)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-parent.Done():
+			klog.Infof("loop=%s - ending worker loop", config.Name)
+			return
+		case <-ticker.C:
+			go config.Worker.Work()
+		}
+	}
+}

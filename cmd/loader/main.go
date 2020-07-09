@@ -63,6 +63,15 @@ func main() {
 		klog.Info("Received SIGTERM or SIGINT signal, initiating shutdown.")
 	}()
 
+	// initialize
+	initializers := test.InitializerChain{
+		// use component-base/metrics/prometheus/restclient instead
+		test.ClientGoMetricsInitialize,
+	}
+	if err := initializers.Invoke(); err != nil {
+		panic(err)
+	}
+
 	// setup a namespace
 	ns, err := client.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -90,6 +99,7 @@ func main() {
 		test.SlowCall(client),
 	}
 	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), *concurrency)...)
+	// workers = append(workers, test.MonitorWorker(client)...)
 
 	// launch workers
 	wg := &sync.WaitGroup{}
