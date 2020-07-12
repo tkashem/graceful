@@ -4,36 +4,33 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"reflect"
+	"github.com/tkashem/graceful/pkg/core"
 	"net/http"
 	"sync"
-	"io/ioutil"
+	"time"
 
 	"k8s.io/apiserver/pkg/server"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/tkashem/graceful/pkg/test"
+	"github.com/tkashem/graceful/pkg/poddensity"
 )
 
 var (
+	concurrency = flag.Int("concurrency", 100, "number of concurrent workers")
+	burst = flag.Int("burst", 10, "burst size")
+	delay = flag.Duration("delay", 1 * time.Second, "step delay")
+	duration = flag.Duration("duration", 1 * time.Minute, "test duration after steady state")
+
 	kubeConfigPath = flag.String("kubeconfig", "", "path to the kubeconfig file")
 	port = flag.Int("metrics-port", 9000, "metrics port")
-	kubeletkubeConfigPath = flag.String("kubelet-kubeconfig", "", "path to the kubeconfig file used by kubelet")
-	kubeAPIServerPodName = flag.String("kube-apiserver-pod-name", "", "kube-apiserver pod name on the node")
-	kubeAPIServerNamespace = flag.String("kube-apiserver-namespace", "openshift-kube-apiserver", "kube-apiserver namespace")
-	concurrency = flag.Int("concurrent", 1, "number of concurrent workers")
 )
 
 func main() {
-	// klog.InitFlags(nil)
 	flag.Parse()
 
 	klog.Infof("kubeConfigPath=%s", *kubeConfigPath)
@@ -43,10 +40,6 @@ func main() {
 	}
 	config.QPS = 10000
 	config.Burst = 20000
-	if err = setHostForConfig(config, *kubeletkubeConfigPath); err != nil {
-		panic(err)
-	}
-
 	klog.Infof("rest.Config.Host=%s", config.Host)
 
 	client, err := kubernetes.NewForConfig(config)
@@ -72,20 +65,6 @@ func main() {
 		panic(err)
 	}
 
-	// setup a namespace
-	ns, err := client.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: "load-test",
-			Labels: map[string]string{
-				"load-test": "true",
-			},
-		},
-	}, metav1.CreateOptions{} )
-	if err != nil {
-		panic(err)
-	}
-	klog.Infof("setup test namespace - namespace=%s", ns.GetName())
-
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	go func() {
@@ -95,62 +74,31 @@ func main() {
 		}
 	}()
 
-	workers := test.WorkerChain{
-		test.SlowCall(client),
-	}
-	workers = append(workers, test.DefaultStepsWorker(client, ns.GetName(), *concurrency)...)
-	// workers = append(workers, test.MonitorWorker(client)...)
+	// setup a dummy worker
+	worker := poddensity.NewWorker(client)
 
-	// launch workers
+	// need this to wait for all workers to exit.
 	wg := &sync.WaitGroup{}
-	workers.Invoke(shutdown, wg)
+	test, testCancel := context.WithTimeout(shutdown, *duration)
+	defer testCancel()
 
-	<-shutdown.Done()
+	tc := core.TestContext{
+		TestCancel: test,
+		WaitGroup:  wg,
+	}
 
-	klog.Info("waiting for worker to be done")
+	// run this worker in parallel
+	runner := core.NewRunnerWithDelay(1 * time.Millisecond)
+	actions := runner.ToActions(&tc, *concurrency, worker, "pod-density")
+	generator := core.NewSteppedLoadGenerator(*delay, *burst)
+
+	go generator.Generate(actions)
+
+	klog.Info("waiting for test to complete")
+	<-test.Done()
+
+	klog.Info("waiting for worker(s) to be done")
 	wg.Wait()
+
 	klog.Info("all worker(s) are done")
-
-	klog.Info("cleaning up")
-}
-
-func setHostForConfig(config *rest.Config, kubeConfigPath string) error {
-	if len(kubeConfigPath) == 0 {
-		return nil
-	}
-
-	bytes, err := ioutil.ReadFile(kubeConfigPath)
-	if err != nil {
-		return err
-	}
-
-	kubelet, err := clientcmd.RESTConfigFromKubeConfig(bytes)
-	if err != nil {
-		return err
-	}
-
-	config.Host = kubelet.Host
-	return nil
-}
-
-func startInformers(shutdown context.Context, factory informers.SharedInformerFactory) error {
-	factory.Start(shutdown.Done())
-	status := factory.WaitForCacheSync(shutdown.Done())
-	if names := check(status); len(names) > 0 {
-		return fmt.Errorf("WaitForCacheSync did not successfully complete resources=%s", names)
-	}
-
-	return nil
-}
-
-func check(status map[reflect.Type]bool) []string {
-	names := make([]string, 0)
-
-	for objType, synced := range status {
-		if !synced {
-			names = append(names, objType.Name())
-		}
-	}
-
-	return names
 }
