@@ -25,6 +25,10 @@ spec:
             - /usr/bin/loader
             - -metrics-port=9090
             - -v=4
+            - -concurrency=1000
+            - -burst=50
+            - -delay=1m
+            - duration=1h
           ports:
             - name: metrics
               containerPort: 9090
