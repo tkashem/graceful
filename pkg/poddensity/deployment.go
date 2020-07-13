@@ -34,7 +34,7 @@ func NewWorker(client kubernetes.Interface) core.Worker {
 
 			if o.deployment != nil {
 				d := o.deployment
-				err := wait.Poll(time.Second, 5 * time.Minute, func() (done bool, pollErr error) {
+				err := wait.Poll(time.Second, 15 * time.Minute, func() (done bool, pollErr error) {
 					deployment, err := client.AppsV1().Deployments(d.GetNamespace()).Get(ctx, d.GetName(), metav1.GetOptions{})
 					if err != nil {
 						if !k8serrors.IsNotFound(err) {
