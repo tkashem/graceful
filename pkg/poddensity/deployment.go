@@ -18,11 +18,11 @@ import (
 	"github.com/tkashem/graceful/pkg/core"
 )
 
-func NewWorker(client kubernetes.Interface, timeout, longevity time.Duration) core.Worker {
+func NewWorker(client kubernetes.Interface, pool NamespacePool, timeout, longevity time.Duration) core.Worker {
 	return func(wc *core.WorkerContext) {
 		prefix := "test-"
 		ctx := context.TODO()
-		o, err := create(ctx, client, prefix)
+		o, err := create(ctx, pool, client, prefix)
 		if err != nil {
 			klog.Errorf("[worker:%s] create error: %s", wc.Name, err.Error())
 		}
@@ -82,41 +82,20 @@ func NewWorker(client kubernetes.Interface, timeout, longevity time.Duration) co
 					klog.Errorf("[worker:%s] error deleting cm: %s", wc.Name, err.Error())
 				}
 			}
-
-			if ns := o.ns; ns != nil {
-				if err := client.CoreV1().Namespaces().Delete(ctx, ns.GetName(), metav1.DeleteOptions{}); err != nil {
-					klog.Errorf("[worker:%s] error deleting namespace: %s", wc.Name, err.Error())
-				}
-			}
 		}()
 	}
 }
 
 type output struct {
-	ns *corev1.Namespace
 	sa *corev1.ServiceAccount
 	secret *corev1.Secret
 	cm *corev1.ConfigMap
 	deployment *appsv1.Deployment
 }
 
-func create(ctx context.Context, client kubernetes.Interface, prefix string) (o *output, err error) {
+func create(ctx context.Context, pool NamespacePool, client kubernetes.Interface, prefix string) (o *output, err error) {
 	o = &output{}
-
-	ns, err := client.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: prefix,
-			Labels: map[string]string{
-				"clusterloader": "true",
-			},
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		return
-	}
-
-	o.ns = ns
-	namespace := o.ns.GetName()
+	namespace := pool.GetRandom()
 
 	sa, err := client.CoreV1().ServiceAccounts(namespace).Create(ctx, &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{

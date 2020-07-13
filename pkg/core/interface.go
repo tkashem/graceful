@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 type TestContext struct {
@@ -41,3 +42,12 @@ func (l LoadGenerator) Generate(actions []Action) {
 }
 
 
+func NewTestContext(parent context.Context, duration time.Duration) (*TestContext, context.CancelFunc) {
+	wg := &sync.WaitGroup{}
+	c, cancel := context.WithTimeout(parent, duration)
+
+	return &TestContext{
+		TestCancel: c,
+		WaitGroup:  wg,
+	}, cancel
+}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/tkashem/graceful/pkg/core"
 	"net/http"
-	"sync"
 	"time"
 
 	"k8s.io/apiserver/pkg/server"
@@ -30,19 +29,20 @@ var (
 	port = flag.Int("metrics-port", 9000, "metrics port")
 	timeout = flag.Duration("timeout", 5 * time.Minute, "how long to wait for deployment/pod to be ready")
 	longevity = flag.Duration("pod-longevity", 30 * time.Second, "how long we want pod to live")
+	pool = flag.Int("namespaces", 1, "fixed namespace pool size")
 )
 
 func main() {
 	flag.Parse()
 
-	klog.Infof("kubeConfigPath=%s", *kubeConfigPath)
+	klog.Infof("[main] kubeConfigPath=%s", *kubeConfigPath)
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeConfigPath)
 	if err != nil {
 		return
 	}
 	config.QPS = 10000
 	config.Burst = 20000
-	klog.Infof("rest.Config.Host=%s", config.Host)
+	klog.Infof("[main] rest.Config.Host=%s", config.Host)
 
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -55,7 +55,7 @@ func main() {
 		defer cancel()
 
 		<-shutdownHandler
-		klog.Info("Received SIGTERM or SIGINT signal, initiating shutdown.")
+		klog.Info("[main] Received SIGTERM or SIGINT signal, initiating shutdown.")
 	}()
 
 	// initialize
@@ -72,35 +72,40 @@ func main() {
 	go func() {
 		err := http.ListenAndServe(fmt.Sprintf(":%d", *port), metricsMux)
 		if err != nil {
-			klog.Errorf("Metrics (http) serving failed: %v", err)
+			klog.Errorf("[main] Metrics (http) serving failed: %v", err)
 		}
 	}()
 
-	// setup a dummy worker
-	worker := poddensity.NewWorker(client, *timeout, *longevity)
-
-	// need this to wait for all workers to exit.
-	wg := &sync.WaitGroup{}
-	test, testCancel := context.WithTimeout(shutdown, *duration)
+	// create a test context
+	tc, testCancel := core.NewTestContext(shutdown, *duration)
 	defer testCancel()
 
-	tc := core.TestContext{
-		TestCancel: test,
-		WaitGroup:  wg,
+	klog.Infof("[main] creating a pool of namespace size=%d", *pool)
+	pool, err := poddensity.NewNamespacePool(client, *pool)
+	if err != nil {
+		panic(err)
 	}
+
+	// setup a dummy worker
+	worker := poddensity.NewWorker(client, pool, *timeout, *longevity)
 
 	// run this worker in parallel
 	runner := core.NewRunnerWithDelay(1 * time.Millisecond)
-	actions := runner.ToActions(&tc, *concurrency, worker, "pod-density")
+	actions := runner.ToActions(tc, *concurrency, worker, "pod-density")
 	generator := core.NewSteppedLoadGenerator(*delay, *burst)
 
 	go generator.Generate(actions)
 
-	klog.Info("waiting for test to complete")
-	<-test.Done()
+	klog.Infof("[main] waiting for test to complete, duration=%s", *duration)
+	<-tc.TestCancel.Done()
 
-	klog.Info("waiting for worker(s) to be done")
-	wg.Wait()
+	klog.Info("[main] test duration elapsed, waiting for worker(s) to be done")
+	tc.WaitGroup.Wait()
+	klog.Info("[main] all worker(s) are done")
 
-	klog.Info("all worker(s) are done")
+	// cleaning up namespaces
+	klog.Info("[main] cleaning up namespace pool")
+	if err := pool.Cleanup(client); err != nil {
+		klog.Errorf("[main] namespace cleanup failed - %s", err.Error())
+	}
 }
