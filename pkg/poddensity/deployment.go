@@ -18,7 +18,7 @@ import (
 	"github.com/tkashem/graceful/pkg/core"
 )
 
-func NewWorker(client kubernetes.Interface, timeout time.Duration) core.Worker {
+func NewWorker(client kubernetes.Interface, timeout, longevity time.Duration) core.Worker {
 	return func(wc *core.WorkerContext) {
 		prefix := "test-"
 		ctx := context.TODO()
@@ -54,6 +54,10 @@ func NewWorker(client kubernetes.Interface, timeout time.Duration) core.Worker {
 
 				if err != nil {
 					klog.Errorf("[worker:%s] error while polling for deployment readiness: %s", wc.Name, err.Error())
+				} else {
+					// we give the Pod some time to live
+					wait := wait.Jitter(longevity, 1.0)
+					<-time.After(wait)
 				}
 
 				if err := client.AppsV1().Deployments(d.GetNamespace()).Delete(ctx, d.GetName(), metav1.DeleteOptions{}); err != nil {
