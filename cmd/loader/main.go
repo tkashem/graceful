@@ -28,6 +28,7 @@ var (
 
 	kubeConfigPath = flag.String("kubeconfig", "", "path to the kubeconfig file")
 	port = flag.Int("metrics-port", 9000, "metrics port")
+	timeout = flag.Duration("timeout", 5 * time.Minute, "how long to wait for deployment/pod to be ready")
 )
 
 func main() {
@@ -75,7 +76,7 @@ func main() {
 	}()
 
 	// setup a dummy worker
-	worker := poddensity.NewWorker(client)
+	worker := poddensity.NewWorker(client, *timeout)
 
 	// need this to wait for all workers to exit.
 	wg := &sync.WaitGroup{}

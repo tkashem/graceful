@@ -18,7 +18,7 @@ import (
 	"github.com/tkashem/graceful/pkg/core"
 )
 
-func NewWorker(client kubernetes.Interface) core.Worker {
+func NewWorker(client kubernetes.Interface, timeout time.Duration) core.Worker {
 	return func(wc *core.WorkerContext) {
 		prefix := "test-"
 		ctx := context.TODO()
@@ -34,7 +34,7 @@ func NewWorker(client kubernetes.Interface) core.Worker {
 
 			if o.deployment != nil {
 				d := o.deployment
-				err := wait.Poll(time.Second, 15 * time.Minute, func() (done bool, pollErr error) {
+				err := wait.Poll(time.Second, timeout, func() (done bool, pollErr error) {
 					deployment, err := client.AppsV1().Deployments(d.GetNamespace()).Get(ctx, d.GetName(), metav1.GetOptions{})
 					if err != nil {
 						if !k8serrors.IsNotFound(err) {
@@ -99,7 +99,7 @@ type output struct {
 func create(ctx context.Context, client kubernetes.Interface, prefix string) (o *output, err error) {
 	o = &output{}
 
-	o.ns, err = client.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
+	ns, err := client.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix,
 			Labels: map[string]string{
@@ -111,9 +111,10 @@ func create(ctx context.Context, client kubernetes.Interface, prefix string) (o 
 		return
 	}
 
+	o.ns = ns
 	namespace := o.ns.GetName()
 
-	o.sa, err = client.CoreV1().ServiceAccounts(namespace).Create(ctx, &corev1.ServiceAccount{
+	sa, err := client.CoreV1().ServiceAccounts(namespace).Create(ctx, &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix,
 			Labels: map[string]string{
@@ -124,12 +125,14 @@ func create(ctx context.Context, client kubernetes.Interface, prefix string) (o 
 	if err != nil {
 		return
 	}
+
+	o.sa = sa
 	_, err = client.CoreV1().ServiceAccounts(namespace).Get(ctx, o.sa.GetName(), metav1.GetOptions{})
 	if err != nil {
 		return
 	}
 
-	o.secret, err = client.CoreV1().Secrets(namespace).Create(ctx, &corev1.Secret{
+	secret, err := client.CoreV1().Secrets(namespace).Create(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix,
 			Labels: map[string]string{
@@ -146,12 +149,13 @@ func create(ctx context.Context, client kubernetes.Interface, prefix string) (o 
 		return
 	}
 
+	o.secret = secret
 	_, err = client.CoreV1().Secrets(namespace).Get(ctx, o.secret.GetName(), metav1.GetOptions{})
 	if err != nil {
 		return
 	}
 
-	o.cm, err = client.CoreV1().ConfigMaps(namespace).Create(ctx, &corev1.ConfigMap{
+	cm, err := client.CoreV1().ConfigMaps(namespace).Create(ctx, &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix,
 			Labels: map[string]string{
@@ -167,14 +171,19 @@ func create(ctx context.Context, client kubernetes.Interface, prefix string) (o 
 		return
 	}
 
+	o.cm = cm
 	_, err = client.CoreV1().ConfigMaps(namespace).Get(ctx, o.cm.GetName(), metav1.GetOptions{})
 	if err != nil {
 		return
 	}
 
 	deployment := new(namespace, prefix, o.sa.GetName(), o.cm.GetName(), o.secret.GetName())
-	o.deployment, err = client.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
+	deployment, err = client.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
+	if err != nil {
+		return
+	}
 
+	o.deployment = deployment
 	return
 }
 
