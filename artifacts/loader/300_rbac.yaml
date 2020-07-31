@@ -23,7 +23,7 @@ rules:
       - apps
       - extensions
     resources:
-      deployments
+      - deployments
     verbs:
       - get
       - list
