@@ -1,28 +1,37 @@
 package poddensity
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/wait"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 
 	"github.com/tkashem/graceful/pkg/core"
+	"github.com/tkashem/graceful/pkg/namespace"
 )
 
-func NewWorker(client kubernetes.Interface, pool NamespacePool, timeout, longevity time.Duration) core.Worker {
+func NewWorker(client kubernetes.Interface, getter namespace.Getter, timeout, longevity time.Duration) core.Worker {
 	return func(wc *core.WorkerContext) {
 		prefix := "test-"
 		ctx := context.TODO()
-		o, err := create(ctx, pool, client, prefix)
+
+		// find an available namespace here
+		namespace, done, err := getter()
+		if err != nil {
+			klog.Errorf("[worker:%s] error getting namespace - %s", wc.Name, err.Error())
+			return
+		}
+
+		o, err := create(ctx, namespace, client, prefix)
 		if err != nil {
 			klog.Errorf("[worker:%s] create error: %s", wc.Name, err.Error())
 		}
@@ -30,16 +39,32 @@ func NewWorker(client kubernetes.Interface, pool NamespacePool, timeout, longevi
 		wc.WaitGroup.Add(1)
 		go func() {
 			defer wc.WaitGroup.Done()
+			defer done()
+
 			ctx := context.TODO()
 
 			if o.deployment != nil {
 				d := o.deployment
+				count := 0
 				err := wait.Poll(time.Second, timeout, func() (done bool, pollErr error) {
 					deployment, err := client.AppsV1().Deployments(d.GetNamespace()).Get(ctx, d.GetName(), metav1.GetOptions{})
 					if err != nil {
 						if !k8serrors.IsNotFound(err) {
 							pollErr = err
 							return
+						}
+					}
+
+					// the deployment read above makes the read vs write disproportionate, so we are going to balance it with a write.
+					if o.test != nil {
+						test := o.test.DeepCopy()
+						count += 1
+						test.Data["test"] = fmt.Sprintf("%d", count)
+						updated, err := client.CoreV1().ConfigMaps(namespace).Update(ctx, test, metav1.UpdateOptions{})
+						if err == nil {
+							o.test = updated
+						} else {
+							klog.Errorf("[worker:%s] failed to update configmap: %s", wc.Name, err.Error())
 						}
 					}
 
@@ -87,15 +112,15 @@ func NewWorker(client kubernetes.Interface, pool NamespacePool, timeout, longevi
 }
 
 type output struct {
-	sa *corev1.ServiceAccount
-	secret *corev1.Secret
-	cm *corev1.ConfigMap
+	sa         *corev1.ServiceAccount
+	secret     *corev1.Secret
+	cm         *corev1.ConfigMap
+	test       *corev1.ConfigMap
 	deployment *appsv1.Deployment
 }
 
-func create(ctx context.Context, pool NamespacePool, client kubernetes.Interface, prefix string) (o *output, err error) {
+func create(ctx context.Context, namespace string, client kubernetes.Interface, prefix string) (o *output, err error) {
 	o = &output{}
-	namespace := pool.GetRandom()
 
 	sa, err := client.CoreV1().ServiceAccounts(namespace).Create(ctx, &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
@@ -108,7 +133,6 @@ func create(ctx context.Context, pool NamespacePool, client kubernetes.Interface
 	if err != nil {
 		return
 	}
-
 	o.sa = sa
 	_, err = client.CoreV1().ServiceAccounts(namespace).Get(ctx, o.sa.GetName(), metav1.GetOptions{})
 	if err != nil {
@@ -131,7 +155,6 @@ func create(ctx context.Context, pool NamespacePool, client kubernetes.Interface
 	if err != nil {
 		return
 	}
-
 	o.secret = secret
 	_, err = client.CoreV1().Secrets(namespace).Get(ctx, o.secret.GetName(), metav1.GetOptions{})
 	if err != nil {
@@ -153,9 +176,28 @@ func create(ctx context.Context, pool NamespacePool, client kubernetes.Interface
 	if err != nil {
 		return
 	}
-
 	o.cm = cm
 	_, err = client.CoreV1().ConfigMaps(namespace).Get(ctx, o.cm.GetName(), metav1.GetOptions{})
+	if err != nil {
+		return
+	}
+
+	test, err := client.CoreV1().ConfigMaps(namespace).Create(ctx, &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: prefix,
+			Labels: map[string]string{
+				"clusterloader": "true",
+			},
+		},
+		Data: map[string]string{
+			"test": "0",
+		},
+	}, metav1.CreateOptions{})
+	if err != nil {
+		return
+	}
+	o.test = test
+	_, err = client.CoreV1().ConfigMaps(namespace).Get(ctx, o.test.GetName(), metav1.GetOptions{})
 	if err != nil {
 		return
 	}
@@ -181,7 +223,7 @@ func new(namespace, prefix, sa, cm, secret string) *appsv1.Deployment {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name: name,
+			Name:      name,
 			Labels: map[string]string{
 				"clusterloader": "true",
 			},
@@ -191,7 +233,7 @@ func new(namespace, prefix, sa, cm, secret string) *appsv1.Deployment {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"clusterloader": "true",
-					"selector": name,
+					"selector":      name,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
@@ -199,7 +241,7 @@ func new(namespace, prefix, sa, cm, secret string) *appsv1.Deployment {
 					Name: namespace,
 					Labels: map[string]string{
 						"clusterloader": "true",
-						"selector": name,
+						"selector":      name,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -211,7 +253,7 @@ func new(namespace, prefix, sa, cm, secret string) *appsv1.Deployment {
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
-									corev1.ResourceCPU: resource.MustParse("10m"),
+									corev1.ResourceCPU:    resource.MustParse("10m"),
 									corev1.ResourceMemory: resource.MustParse("10m"),
 								},
 							},
@@ -253,18 +295,18 @@ func new(namespace, prefix, sa, cm, secret string) *appsv1.Deployment {
 					},
 					Tolerations: []corev1.Toleration{
 						{
-							Key: "node.kubernetes.io/not-ready",
+							Key:      "node.kubernetes.io/not-ready",
 							Operator: corev1.TolerationOpExists,
-							Effect: corev1.TaintEffectNoExecute,
+							Effect:   corev1.TaintEffectNoExecute,
 							TolerationSeconds: func() *int64 {
 								v := int64(900)
 								return &v
 							}(),
 						},
 						{
-							Key: "node.kubernetes.io/unreachable",
+							Key:      "node.kubernetes.io/unreachable",
 							Operator: corev1.TolerationOpExists,
-							Effect: corev1.TaintEffectNoExecute,
+							Effect:   corev1.TaintEffectNoExecute,
 							TolerationSeconds: func() *int64 {
 								v := int64(900)
 								return &v

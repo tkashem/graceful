@@ -4,10 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/tkashem/graceful/pkg/core"
 	"net/http"
 	"time"
 
+	"github.com/tkashem/graceful/pkg/core"
 	"k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/tkashem/graceful/pkg/test"
+	"github.com/tkashem/graceful/pkg/namespace"
 	"github.com/tkashem/graceful/pkg/poddensity"
 )
 
@@ -30,6 +31,7 @@ var (
 	timeout = flag.Duration("timeout", 5 * time.Minute, "how long to wait for deployment/pod to be ready")
 	longevity = flag.Duration("pod-longevity", 30 * time.Second, "how long we want pod to live")
 	pool = flag.Int("namespaces", 1, "fixed namespace pool size")
+	podsPerNamespace = flag.Int("pods-per-namespace", 3, "number of pods per namespace")
 )
 
 func main() {
@@ -40,7 +42,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	config.QPS = 10000
+	config.QPS = 15000
 	config.Burst = 20000
 	klog.Infof("[main] rest.Config.Host=%s", config.Host)
 
@@ -80,17 +82,18 @@ func main() {
 	tc, testCancel := core.NewTestContext(shutdown, *duration)
 	defer testCancel()
 
-	klog.Infof("[main] creating a pool of namespace size=%d", *pool)
-	pool, err := poddensity.NewNamespacePool(client, *pool)
+	klog.Infof("[main] using a churning namespace pool  pods-per-namespace=%d", *podsPerNamespace)
+	pool, err := namespace.NewPoolWithChurn(config, *podsPerNamespace)
 	if err != nil {
 		panic(err)
 	}
 
 	// setup a dummy worker
-	worker := poddensity.NewWorker(client, pool, *timeout, *longevity)
+	worker := poddensity.NewWorker(client, pool.GetNamespace, *timeout, *longevity)
 
 	// run this worker in parallel
 	runner := core.NewRunnerWithDelay(1 * time.Millisecond)
+
 	actions := runner.ToActions(tc, *concurrency, worker, "pod-density")
 	generator := core.NewSteppedLoadGenerator(*delay, *burst)
 
@@ -105,7 +108,7 @@ func main() {
 
 	// cleaning up namespaces
 	klog.Info("[main] cleaning up namespace pool")
-	if err := pool.Cleanup(client); err != nil {
+	if err := pool.Dispose(); err != nil {
 		klog.Errorf("[main] namespace cleanup failed - %s", err.Error())
 	}
 }

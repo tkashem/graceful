@@ -29,7 +29,7 @@ func NewRunnerWithDelay(delay time.Duration) Runner {
 	}
 }
 
-func (r Runner) ToActions(tc *TestContext, concurrency int, worker Worker, prefix string) []Action {
+func (r Runner)  ToActions(tc *TestContext, concurrency int, worker Worker, prefix string) []Action {
 	doers := make([]Action, 0)
 
 	if concurrency <= 0 {

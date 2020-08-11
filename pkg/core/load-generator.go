@@ -1,7 +1,9 @@
 package core
 
 import (
+	"context"
 	"time"
+	"golang.org/x/time/rate"
 
 	"k8s.io/klog"
 )
@@ -19,3 +21,15 @@ func NewSteppedLoadGenerator(delay time.Duration, burst int) LoadGenerator {
 		}
 	}
 }
+
+func NewRateLimitedLoadGenerator(qps, burst int) LoadGenerator {
+	limiter := rate.NewLimiter(rate.Limit(qps), burst)
+	return func(actions []Action) {
+		for i := range actions {
+			action := actions[i]
+			limiter.Wait(context.TODO())
+			go action()
+		}
+	}
+}
+
