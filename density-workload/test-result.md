@@ -35,42 +35,32 @@ We have the following goals:
 
 
 ## Result - Baseline
-**Project Churning:**
+**Project Churning:**  
 ![project churn rate](project-churning.png)
 * An average of `0.2` `Project` create/second (lower left)
 * An average of `0.2` `Project` delete/second (lower right)
 
-Overall, we see about 700 Project being churned per hour.  
-
-**Pod Churning:**
+**Pod Churning:**  
 ![pod churn rate](pod-churning.png)
 * An average of `25` `Pod` create/second (lower left)
 * An average of `25` `Pod` delete/second (lower right)
 
-Overall, we see about 90K Pod being churned per hour.
-
-*Pod Start Duration:*
+*Pod Start Duration:*  
 ![pod start duration](pod-start-duration.png)
 
-
-Maximum number of running Pods at any time is `6.2K`.
+Maximum number of running Pods at any time is `6.2K`.  
 ![running pods](running-pods.png)
 
-
-Maximum number of Nmespaces at any given time is `175` 
+Maximum number of Nmespaces at any given time is `175`  
 ![max namespaces](max-namespaces.png)
 
-
-
-**Load on the API Server:**
-
+**Load on the API Server:**  
 `max-mutating-requests-inflight` peaked at `1K`, so we saw some mutating requests getting `429` since `1K` is the 
-limit for mutating requests.
+limit for mutating requests.  
 ![max inflights](max-inflights.png)
 
-
-Cluster Latency and Throughput: 
+Cluster Latency and Throughput:   
 ![rps-latency](rps-latency.png)
 
-**Object Count**
+**Object Count**  
 ![count](count.png)
