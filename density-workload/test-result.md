@@ -66,6 +66,6 @@ Cluster Latency and Throughput:
 ![count](count.png)
 
 **Observation**:  
-* With project/namespace churning we see lag in the API requests. etcd show some lag but not all of the api lag can be 
+* With project/namespace churning we see lag in the API requests. etcd shows some lag but not all of the api lag can be 
  explained with etcd slowness. Below is 99th percentile of api (left) and etcd lag.  
 ![lag-api-etcd](lag-api-etcd.png)
