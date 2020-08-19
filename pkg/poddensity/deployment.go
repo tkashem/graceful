@@ -57,15 +57,20 @@ func NewWorker(client kubernetes.Interface, getter namespace.Getter, timeout, lo
 
 					// the deployment read above makes the read vs write disproportionate, so we are going to balance it with a write.
 					if o.test != nil {
-						test := o.test.DeepCopy()
-						count += 1
-						test.Data["test"] = fmt.Sprintf("%d", count)
-						updated, err := client.CoreV1().ConfigMaps(namespace).Update(ctx, test, metav1.UpdateOptions{})
-						if err == nil {
+						func() {
+							test := o.test.DeepCopy()
+							count += 1
+							test.Data["test"] = fmt.Sprintf("%d", count)
+							updated, err := client.CoreV1().ConfigMaps(namespace).Update(ctx, test, metav1.UpdateOptions{})
+							if err != nil {
+								if k8serrors.IsConflict(err) {
+									return
+								}
+								klog.Errorf("[worker:%s] failed to update configmap: %s", wc.Name, err.Error())
+								return
+							}
 							o.test = updated
-						} else {
-							klog.Errorf("[worker:%s] failed to update configmap: %s", wc.Name, err.Error())
-						}
+						}()
 					}
 
 					available, err := GetDeploymentStatus(deployment)

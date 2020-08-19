@@ -30,8 +30,8 @@ var (
 	port = flag.Int("metrics-port", 9000, "metrics port")
 	timeout = flag.Duration("timeout", 5 * time.Minute, "how long to wait for deployment/pod to be ready")
 	longevity = flag.Duration("pod-longevity", 30 * time.Second, "how long we want pod to live")
-	pool = flag.Int("namespaces", 1, "fixed namespace pool size")
-	podsPerNamespace = flag.Int("pods-per-namespace", 3, "number of pods per namespace")
+	fixedPool = flag.Int("namespaces", 1, "fixed namespace pool size")
+	podsPerNamespace = flag.Int("pods-per-namespace", 0, "number of pods per namespace")
 )
 
 func main() {
@@ -82,10 +82,23 @@ func main() {
 	tc, testCancel := core.NewTestContext(shutdown, *duration)
 	defer testCancel()
 
-	klog.Infof("[main] using a churning namespace pool  pods-per-namespace=%d", *podsPerNamespace)
-	pool, err := namespace.NewPoolWithChurn(config, *podsPerNamespace)
-	if err != nil {
-		panic(err)
+	var pool namespace.Pool
+	if *podsPerNamespace > 0 {
+		klog.Infof("[main] using a churning namespace pool  pods-per-namespace=%d", *podsPerNamespace)
+		p, err := namespace.NewPoolWithChurn(config, *podsPerNamespace)
+		if err != nil {
+			panic(err)
+		}
+
+		pool = p
+	} else {
+		klog.Infof("[main] using a fixed namespace pool  size=%d", *fixedPool)
+		p, err := namespace.NewFixedPool(client, *fixedPool)
+		if err != nil {
+			panic(err)
+		}
+
+		pool= p
 	}
 
 	// setup a dummy worker

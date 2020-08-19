@@ -8,6 +8,7 @@ require (
 	github.com/openshift/api v0.0.0-20200803131051-87466835fcc0
 	github.com/openshift/client-go v0.0.0-20200729195840-c2b1adc6bed6
 	github.com/prometheus/client_golang v1.7.1
+	github.com/stretchr/testify v1.4.0
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 

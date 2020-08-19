@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 )
 
 func NewFixedPool(client kubernetes.Interface, size int) (*FixedPool, error) {
@@ -57,6 +58,7 @@ func (p *FixedPool) GetNamespace() (namespace string, done Done, err error) {
 }
 
 func (p *FixedPool) Dispose() error {
+	klog.Infof("[FixedPool] deleting namespaces size=%d", len(p.pool))
 	for i := range p.pool {
 		ns := p.pool[i]
 		if err := p.client.CoreV1().Namespaces().Delete(context.TODO(), ns.GetName(), metav1.DeleteOptions{}); err != nil {
