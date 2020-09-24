@@ -18,6 +18,7 @@ import (
 	"github.com/tkashem/graceful/pkg/test"
 	"github.com/tkashem/graceful/pkg/namespace"
 	"github.com/tkashem/graceful/pkg/poddensity"
+	"github.com/tkashem/graceful/pkg/configmap"
 )
 
 var (
@@ -32,6 +33,7 @@ var (
 	longevity = flag.Duration("pod-longevity", 30 * time.Second, "how long we want pod to live")
 	fixedPool = flag.Int("namespaces", 1, "fixed namespace pool size")
 	podsPerNamespace = flag.Int("pods-per-namespace", 0, "number of pods per namespace")
+	workloadType = flag.String("workload", "pod", "workload type, supported values pod, configmap")
 )
 
 func main() {
@@ -84,7 +86,7 @@ func main() {
 
 	var pool namespace.Pool
 	if *podsPerNamespace > 0 {
-		klog.Infof("[main] using a churning namespace pool  pods-per-namespace=%d", *podsPerNamespace)
+		klog.Infof("[main] using a churning namespace pool pods-per-namespace=%d", *podsPerNamespace)
 		p, err := namespace.NewPoolWithChurn(config, *podsPerNamespace)
 		if err != nil {
 			panic(err)
@@ -101,8 +103,16 @@ func main() {
 		pool= p
 	}
 
-	// setup a dummy worker
-	worker := poddensity.NewWorker(client, pool.GetNamespace, *timeout, *longevity)
+	// setup the worker
+	var worker core.Worker
+	switch *workloadType {
+	case "pod":
+		worker = poddensity.NewWorker(client, pool.GetNamespace, *timeout, *longevity)
+	case "configmap":
+		worker = configmap.NewWorker(client, pool.GetNamespace)
+	default:
+		panic(fmt.Sprintf("workload type not supported workload=%s", *workloadType))
+	}
 
 	// run this worker in parallel
 	runner := core.NewRunnerWithDelay(1 * time.Millisecond)
