@@ -30,7 +30,7 @@ While we put load on the cluster to achieve the above target, we need to keep in
 With these constraints in mind, the test will have the following characteristics:
 - `Configmap` create/update/get/delete. 
 - etcd database size is not expected to grow with `ConfigMap` churning.
-- We choose `Configmap' since this will less likely to trigger any traffic from the control plane components like `kube-controller-manager`, `scheduler` or `kubelet`.
+- We choose `Configmap` since this will less likely to trigger any traffic from the control plane components like `kube-controller-manager`, `scheduler` or `kubelet`.
 - No `Pod` or `Namespace` churning.
   
 The test runs from a machine external to the cluster and it goes through the external load balancer. The value of `http2-max-streams-per-connection` is `2000`. 
