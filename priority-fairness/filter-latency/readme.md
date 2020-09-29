@@ -156,6 +156,15 @@ The test runs with the following parameters:
   
 **Load**
 
-| Throughput | Requests in Flight | 
-| -------- | -------- | 
-| ![throughput](throughput.png) | ![requests in flight](requests-in-flight.png) |
+![requests in flight](requests-in-flight.png)
+![throughput](throughput.png)
+
+- requests in flight peak at `3000` on the target `kube-apiserver` instance.
+- throughput peaks at `2.5K` requests/sec on the target `kube-apiserver` instance.
+
+
+**APF Latency**
+![filter-latency-99th](filter-latency-99th.png) 
+![wait duration](wait-duration.png) |
+
+- The 
