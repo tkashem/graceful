@@ -31,7 +31,7 @@ With these constraints in mind, the test will have the following characteristics
 - `Configmap` create/update/get/delete. 
 - etcd database size is not expected to grow with `ConfigMap` churning.
 - We choose `Configmap` since this will less likely to trigger any traffic from the control plane components like `kube-controller-manager`, `scheduler` or `kubelet`.
-- No `Pod` or `Namespace` churning.
+- No `Pod` or `Namespace` churning. (no need to scale up worker nodes)
   
 The test runs from a machine external to the cluster and it goes through the external load balancer. The value of `http2-max-streams-per-connection` is `2000`. 
 ```
@@ -119,6 +119,21 @@ k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/filters.WithImpersonatio
 - `withDecorateFilterBefore` tracks `A`, when APF filter started handling a request.
 - `withDecorateFilterAfter` tracks `B`,  when APF filter is finished with a request. 
 
+Finally, set a hig enough value for in flight settings so that the traffic from the test is not throttled by APF. The traffic
+from the test is categorized as `flow-schema=global-default` and `priority-level=global-default`
+```
+apiServerArguments {
+  ],
+  "max-mutating-requests-inflight": [
+    "3000"
+  ],
+  "max-requests-inflight": [
+    "6000"
+  ]
+}
+```
+
+
 The test runs with the following parameters:
 - The test runs as `delay-adder` user: it ensures every request has at least `1s` delay.
 - `--concurrency=3000`: The target load is `3000` concurrent requests from the client side.
@@ -127,3 +142,20 @@ The test runs with the following parameters:
 - `--duration=15m`: After the peak load is reached, we stay at steady state for `~10m`.
 
 
+## Test Results
+- Timeline on each snapshot is `28m`
+
+**CPU Usage**
+
+| CPU Usage | Load Average | 
+| -------- | -------- | 
+| ![cpu usage](cpu-usage.png) | ![load average](load-average.png) |
+
+- CPU usage is around `70%`. 
+
+  
+**Load**
+
+| Throughput | Requests in Flight | 
+| -------- | -------- | 
+| ![throughput](throughput.png) | ![requests in flight](requests-in-flight.png) |
