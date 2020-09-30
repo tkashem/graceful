@@ -202,3 +202,7 @@ Take for example the `kube-apiserver` instance on the node `10.0.0.5` where the 
 above. As soon as the test is kicked off the APF filter latency starts coming down immediately. It is evident from the 
 screenshots below.
 ![apf latency falls](apf-latency-falls.png)
+
+**Next Steps**
+- Run the test at a higher scale, and maybe without the artificial delay-adder
+  
