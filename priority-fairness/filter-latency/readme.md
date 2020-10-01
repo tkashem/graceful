@@ -205,4 +205,6 @@ screenshots below.
 
 **Next Steps**
 - Run the test at a higher scale, and maybe without the artificial delay-adder
-- Manipulate flowschema and prioritylevelconfiguration while the test runs.  
+- Manipulate flowschema and prioritylevelconfiguration while the test runs.
+
+The server filters used for this test are in this WIP/DNM PR: https://github.com/kubernetes/kubernetes/pull/95207
