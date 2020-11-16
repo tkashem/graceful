@@ -187,15 +187,15 @@ Observations:
 
 **Cluster at Rest**
 
-We see elevated APF filter latency when the cluster is at rest (no test traffic). 
+No API traffic from the test: 
 ![apf latency at rest 99th](apf-latency-at-rest-99th.png)
 ![apf latency at rest 90th](apf-latency-at-rest-90th.png)
 
 Observations:
 - One instance shows noticeably higher APF filter latency than than the rest.
 - `90th` percentile drops the filter latency to below `5ms`.
-- When the test is kicked off, it triggers more traffic, the slow requests fall out of 99th percentile window and the 
-  filter latency appears to have come down. 
+- When the test is kicked off, it triggers more traffic, the request with very slow filter latency become outlier 
+  and fall out of 99th percentile window and thus the filter latency appears to have come down. 
 
 Take for example the `kube-apiserver` instance on the node `10.0.0.5` where the APF filter latency hovers around `50ms` 
 above. As soon as the test is kicked off the APF filter latency appears to come down immediately. 
