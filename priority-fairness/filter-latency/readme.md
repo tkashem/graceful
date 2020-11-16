@@ -178,11 +178,9 @@ by(flowSchema, priorityLevel, le))
 ```
 
 Observations:
-- It is evident that apart from the time a request spends in the p&f queue, it incurs additional latency. This additional
-  latency may be worth measuring. In addition to measuring how much time a request spends in a queue, it may be worth 
-  adding a new metric that tracks `B - A` for all requests.
-- There is a slight rise (less than `5ms`) in APF filter latency with respect to increasing load. The rise is nominal and
-  more tests need to be run to understand if the rise is consistent.
+- It is evident that apart from the time a request spends in the p&f queue, it incurs additional latency, although negligible. 
+- There may be a very slight rise (less than `5ms`) in APF filter latency with respect to increasing load. This is not 
+  definitive and more tests need to be run to validate this hypothesis.
 
 
 **Cluster at Rest**
