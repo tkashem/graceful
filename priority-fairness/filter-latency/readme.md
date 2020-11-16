@@ -67,24 +67,23 @@ func WithArtificialDelayAdder(handler http.Handler,	userName string,
 }
 ```
 
-To measure how much time a request spends in priority and fairness filter, we have added a decorator that tracks `A` 
+To measure how much time a request spends in priority and fairness filter, we have added a filter decorator that tracks `A` 
 and `B` and then emits a histogram to measure APF filter latency.
 ```go
-    // before
+    // track started
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		r = r.WithContext(WithFiletrStartTimestamp(ctx, time.Now()))
+		r = r.WithContext(WithFiletrStartedTimestamp(ctx, time.Now()))
 
 		handler.ServeHTTP(w, r)
 	})
 
-    // after
+    // track completed
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The previous handler started executing this one
 		end := time.Now()
 
 		ctx := r.Context()
-		start, ok := FilterStartTimestampFrom(ctx)
+		start, ok := FilterStartedTimestampFrom(ctx)
 		if ok {
 			metrics.RecordFilterLatency(r, requestInfo, name, end.Sub(start))
 		}
@@ -98,9 +97,9 @@ The test filters (artificial delay adder and APF filter decorator) are chained a
 	handler = genericfilters.WithArtificialDelayAdder(handler, "delay-adder", c.LongRunningFunc)
 
 	if c.FlowControl != nil {
-		handler = genericfilters.DecorateFilter(handler, "apf", c.LongRunningFunc, func(h http.Handler) http.Handler {
-			return genericfilters.WithPriorityAndFairness(h, c.LongRunningFunc, c.FlowControl)
-		})
+		handler = filterlatency.TrackCompleted(handler)
+		handler = genericfilters.WithPriorityAndFairness(handler, c.LongRunningFunc, c.FlowControl)
+		handler = filterlatency.TrackStarted(handler, "priorityandfairness")
 	}
 ``` 
 
@@ -109,9 +108,9 @@ The stack trace of an API request looks like this:
 ...
 k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/filters.WithAuthorization.func1:64
 k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/server/filters.WithArtificialDelayAdder.func1:49 (adds ~1s delay)
-k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/server/filters.withDecorateFilterAfter.func1:79 (tracks B and emits metrics)
+k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/filterlatency.TrackCompleted.func1:79 (tracks B and emits metrics)
 k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/server/filters.WithPriorityAndFairness.func2:99
-k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/server/filters.withDecorateFilterBefore.func1:59 (track A)
+k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/filterlatency.TrackStarted.func1:59 (track A)
 k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/filters.WithImpersonation.func1:50
 ...
 ```
@@ -206,7 +205,9 @@ But if we take a `100th` quantile to include all requests then it shows the incr
 ![apf latency falls 100th quantile](apf-latency-falls-100th-quantile.png)
 
 **Next Steps**
+- Test using latest P&F
+- Change the test to use different users so we have different flowschema/priority level in action on the server.
 - Run the test at a higher scale, and maybe without the artificial delay-adder
 - Manipulate flowschema and prioritylevelconfiguration while the test runs.
 
-The server filters used for this test are in this WIP/DNM PR: https://github.com/kubernetes/kubernetes/pull/95207
+The filter latency PR: https://github.com/kubernetes/kubernetes/pull/95207
