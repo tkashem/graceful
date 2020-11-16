@@ -116,8 +116,8 @@ k8s.io/kubernetes/vendor/k8s.io/apiserver/pkg/endpoints/filters.WithImpersonatio
 ```
 
 - `WithArtificialDelayAdder` adds `~1s` delay to requests coming from the `delay-adder` user.
-- `withDecorateFilterBefore` tracks `A`, when APF filter has started.
-- `withDecorateFilterAfter` tracks `B`,  when APF filter has started the next handler in the chain. 
+- `TrackStarted` tracks `A`, when APF filter has started.
+- `TrackCompleted` tracks `B`,  when APF filter has started the next handler in the chain. 
 
 Finally, set a hig enough value for in flight settings so that the traffic from the test is not throttled by APF. The traffic
 from the test is categorized as `flow-schema=global-default` and `priority-level=global-default`
